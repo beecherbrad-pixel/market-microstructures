@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "microstructure"
+version = "0.1.0"
+description = "PySpark pipeline that turns tick-level crypto trades into market microstructure measures"
+readme = "README.md"
+requires-python = ">=3.10"
+# The downloader uses only the standard library. PySpark is an extra because
+# Databricks already provides it; installing a second copy there causes conflicts.
+dependencies = []
+
+[project.optional-dependencies]
+spark = ["pyspark>=3.5"]
+dev = ["pyspark>=3.5", "pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

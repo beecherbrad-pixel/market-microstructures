@@ -1,0 +1,27 @@
+# Data never goes in git: one month of BTCUSDT trades is several hundred MB.
+data/
+*.csv.gz
+*.zip
+*.part
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+
+# Spark and notebooks
+spark-warehouse/
+metastore_db/
+derby.log
+.ipynb_checkpoints/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
