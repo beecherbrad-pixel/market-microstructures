@@ -12,8 +12,8 @@ a flag for which side initiated it.
 | Stage | What it does | State |
 |---|---|---|
 | Ingest | Download, checksum-verify and store daily trade files | Done |
-| Bronze | Raw trades in Delta tables with an explicit schema | Schema and reader done; Delta load next |
-| Silver | Deduplicated trades, consistent timestamps, signed order flow | Planned |
+| Bronze | Raw trades in a Delta table with an explicit schema and lineage columns, loaded incrementally with Auto Loader | Done |
+| Silver | Deduplicated trades, consistent timestamps, signed order flow; liquid clustering on pair and day | Done |
 | Gold | One-minute bars: VWAP, realized volatility, order-flow imbalance, Roll spread, Amihud illiquidity | Planned |
 | Analysis | Kyle's lambda by pair and day | Planned |
 
@@ -25,6 +25,10 @@ src/microstructure/
     schema.py           explicit schema for raw trade files
     io.py               read raw files into a Spark DataFrame
     smoke.py            sanity check on downloaded data
+    bronze.py           raw rows plus source file and load time
+    silver.py           validate, deduplicate, normalize time, sign trades
+notebooks/
+    01_bronze_silver.py Databricks notebook: volume -> bronze -> silver
 tests/                  pytest suite; runs offline on a local Spark session
 .github/workflows/      runs the tests on every push
 ```
@@ -70,6 +74,25 @@ Then check that Spark reads it (Linux, macOS, WSL, or Windows with
 ```powershell
 python -m microstructure.smoke C:\data\binance
 ```
+
+## Running on Databricks
+
+Built for Databricks Free Edition (serverless compute, Unity Catalog).
+
+1. **Workspace → Create → Git folder**, pointing at this repository. The
+   notebook imports the package straight from the folder's `src/`, so nothing
+   needs installing.
+2. Open `notebooks/01_bronze_silver.py` and run the first cells. They create
+   the `workspace.microstructure` schema and two volumes, `raw` and
+   `checkpoints`.
+3. Upload the downloaded `.csv.gz` files to
+   `/Volumes/workspace/microstructure/raw/trades/symbol=<SYMBOL>/`
+   (Catalog → the `raw` volume → *Upload to this volume*). Free Edition compute
+   can only reach a short list of trusted domains, so files are downloaded
+   locally rather than inside the notebook.
+4. Run the whole notebook. Bronze is loaded with Auto Loader, so after
+   uploading more files a rerun reads only the new ones; silver is rebuilt
+   from bronze. Row counts and runtimes are appended to `pipeline_runs`.
 
 ## Data notes
 
