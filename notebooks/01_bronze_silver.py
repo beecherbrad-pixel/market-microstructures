@@ -83,6 +83,9 @@ import time
 
 from pyspark.sql import functions as F
 
+# Count before and after rather than reading the stream's progress reports,
+# which serverless compute does not always fill in.
+rows_before = spark.table(BRONZE).count() if spark.catalog.tableExists(BRONZE) else 0
 started = time.perf_counter()
 
 raw_stream = (
@@ -103,7 +106,7 @@ query = (
 query.awaitTermination()
 
 bronze_seconds = time.perf_counter() - started
-bronze_new_rows = sum(p["numInputRows"] for p in query.recentProgress)
+bronze_new_rows = spark.table(BRONZE).count() - rows_before
 print(f"bronze: {bronze_new_rows:,} new rows in {bronze_seconds:,.1f}s")
 
 # COMMAND ----------
