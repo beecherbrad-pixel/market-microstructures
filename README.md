@@ -100,9 +100,27 @@ Built for Databricks Free Edition (serverless compute, Unity Catalog).
    runtimes. The `bar_seconds` widget switches to other bar lengths (300 for
    five-minute bars).
 
-To run both notebooks in order on a schedule or after each upload, create a
-job under **Jobs & Pipelines** with two notebook tasks, `02_gold` depending on
-`01_bronze_silver`.
+## Deploying the job
+
+The pipeline job is defined as code in a Databricks Asset Bundle
+(`databricks.yml` and `jobs/microstructure_pipeline.yml`). It runs
+`01_bronze_silver` and then `02_gold` on serverless compute whenever new files
+arrive in the raw volume, and emails the deploying user if a task fails.
+
+With the [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install)
+installed:
+
+```powershell
+databricks auth login --host https://<your-workspace>.cloud.databricks.com
+databricks bundle validate
+databricks bundle deploy
+databricks bundle run microstructure_pipeline   # optional: run once now
+```
+
+`deploy` uploads the notebooks and `src/` to the workspace and creates or
+updates the job, so the job always runs the code in the commit that was
+deployed. Nothing in the bundle names a workspace or user; both come from the
+CLI login.
 
 ## Gold measures
 

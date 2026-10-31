@@ -1,0 +1,17 @@
+# Databricks Asset Bundle: deploys the pipeline job and the code it runs.
+#
+#   databricks bundle validate
+#   databricks bundle deploy
+#   databricks bundle run microstructure_pipeline
+#
+# The workspace comes from your Databricks CLI login (databricks auth login),
+# so no host or user name is stored here.
+bundle:
+  name: market-microstructures
+
+include:
+  - jobs/*.yml
+
+targets:
+  dev:
+    default: true

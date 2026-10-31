@@ -1,35 +1,40 @@
+# Bronze and silver, then gold, run whenever new trade files land in the raw volume.
+# Notebook paths are relative to this file; the bundle uploads the notebooks
+# together with src/, which the notebooks import from.
 resources:
   jobs:
     microstructure_pipeline:
       name: microstructure-pipeline
+
       email_notifications:
         on_failure:
-          - beecher.brad@gmail.com
+          - ${workspace.current_user.userName}
+
       trigger:
         pause_status: UNPAUSED
         file_arrival:
           url: /Volumes/workspace/microstructure/raw/trades/
-      tasks:
-        - task_key: Bronze_and_Silver
-          notebook_task:
-            notebook_path: /Workspace/Users/beecher.brad@gmail.com/market-microstructures/notebooks/01_bronze_silver
-            source: WORKSPACE
-          environment_key: Default
-        - task_key: Gold
-          depends_on:
-            - task_key: Bronze_and_Silver
-          notebook_task:
-            notebook_path: /Workspace/Users/beecher.brad@gmail.com/market-microstructures/notebooks/02_gold
-            source: WORKSPACE
+
+      # Starts a little slower than PERFORMANCE_OPTIMIZED but uses less of the
+      # Free Edition compute quota; nothing here is waiting on start-up time.
+      performance_target: STANDARD
+
       queue:
         enabled: true
+
       parameters:
         - name: catalog
           default: workspace
         - name: schema
           default: microstructure
-      environments:
-        - environment_key: Default
-          spec:
-            environment_version: "6"
-      performance_target: PERFORMANCE_OPTIMIZED
+
+      tasks:
+        - task_key: Bronze_and_Silver
+          notebook_task:
+            notebook_path: ../notebooks/01_bronze_silver.py
+
+        - task_key: Gold
+          depends_on:
+            - task_key: Bronze_and_Silver
+          notebook_task:
+            notebook_path: ../notebooks/02_gold.py

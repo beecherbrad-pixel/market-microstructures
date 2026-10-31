@@ -20,6 +20,9 @@ metastore_db/
 derby.log
 .ipynb_checkpoints/
 
+# Databricks bundle state (local deploy cache)
+.databricks/
+
 # Editors and OS
 .vscode/
 .idea/
