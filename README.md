@@ -216,57 +216,60 @@ significant at 5% on 89 of 90 BTC days and all 90 ETH days, and order flow
 explains about a quarter of the variance in minute returns (mean R-squared
 0.26 and 0.22).
 
-Across days, lambda moves closely with same-day volatility and volume, but a
-check with the previous day's volatility suggests most of that is mechanical:
+Across days, price impact rises with volatility and falls with volume. The
+result survives every check that removes the overlap between lambda and
+volatility:
 
-| Log lambda on | Same day, pooled | Same day, BTCUSDT | Same day, ETHUSDT | Previous day's volatility, pooled |
-|---|---|---|---|---|
-| log realized volatility | 1.63 (0.15) | 1.59 (0.12) | 1.61 (0.30) | 0.12 (0.12) |
-| log volume | -1.23 (0.13) | -1.16 (0.13) | -1.25 (0.23) | -0.13 (0.10) |
-| R-squared | 0.75 | 0.61 | 0.43 | 0.51 |
-| Pair-days | 180 | 90 | 90 | 178 |
+| Log lambda on | Same day | Split sample | Split sample, residual vol | IV (yesterday's values) | Lagged vol, today's volume |
+|---|---|---|---|---|---|
+| log volatility | 1.63 (0.15) | 1.45 (0.15) | 1.25 (0.16) | 1.36 (0.28) | 0.12 (0.12) |
+| log volume | -1.23 (0.13) | -1.14 (0.14) | -1.00 (0.15) | -0.98 (0.19) | -0.13 (0.10) |
+| Pair-days | 180 | 180 | 180 | 178 | 178 |
 
-Standard errors in parentheses: clustered by date for pooled models (with pair
-fixed effects), Newey-West with 5 lags for each pair. R-squared on pooled
-models includes the pair effects.
+Pooled models with pair fixed effects; standard errors in parentheses,
+clustered by date. First-stage F statistics for the IV are 17.8 (volatility)
+and 17.1 (volume). Per pair, the split-sample residual-volatility slope is 1.33
+(0.13) for BTCUSDT and 1.10 (0.33) for ETHUSDT, and the IV slope is 1.24 (0.48)
+and 1.34 (0.48), with Newey-West errors.
 
-- **Same day.** At fixed volume, a day with 10% higher realized volatility has
-  about 16% higher lambda; at fixed volatility, 10% more volume goes with about
-  12% lower lambda. The estimates are almost identical for both pairs.
-- **Why the same-day estimate is suspect.** An OLS slope is
-  `lambda = corr(r, q) * sd(r) / sd(q)`. Over a day, `sd(r)` is close to realized
-  volatility and `sd(q)`, the spread of net order flow, grows with volume, so
-  lambda, volatility and volume are built from the same numbers. Two things
-  link them that are not the effect of interest: shared sampling noise (a day
-  on which flow and returns happen to line up raises both the lambda estimate
-  and volatility), and impact creating volatility (when lambda really is high,
-  flow moves prices further, which raises volatility).
-- **The lagged check.** Yesterday's volatility shares no data with today's
-  regression. Its slope is 0.12 and not significant (pooled p = 0.31;
-  BTCUSDT 0.01, p = 0.94; ETHUSDT 0.19, p = 0.32), and the volume effect
-  mostly disappears as well (except for ETHUSDT: -0.30, p = 0.006). This is a
-  weaker test than the same-day model, since yesterday's volatility only partly
-  predicts today's, but the 95% interval for the pooled slope (-0.11 to 0.36)
-  is far below 1.63.
-- **High-volatility days.** A dummy for each pair's top fifth of days by
-  volatility is only marginally significant (pooled: +1.0 bps per $1M,
-  p = 0.06), which fits the same picture.
+What each column removes:
 
-What holds up is the level of price impact: it is positive and significant on
-almost every day, stable within each pair, and about 2.5 times larger for
-ETHUSDT.
-
-Two further checks avoid the same-day overlap; their results are pending:
-
-| Model | What it does | Removes sampling noise | Removes impact creating volatility |
+| Model | What it does | Removes shared sampling noise | Removes impact creating volatility |
 |---|---|---|---|
-| `iv_lagged` | Two-stage least squares: today's log volatility and log volume instrumented with yesterday's; same scale as the same-day model | Yes | No: lambda is persistent, so yesterday's volatility carries yesterday's lambda, which biases the slope upward |
-| `split_sample` | Lambda from even-numbered minutes, volatility and volume from odd-numbered minutes, so no trade or return feeds both | Yes | No |
-| `split_sample_resid` | As `split_sample`, with the odd minutes' residual volatility (the part order flow does not explain) | Yes | Mostly |
+| Same day | Lambda, volatility and volume from the same minutes | No | No |
+| Split sample | Lambda from even-numbered minutes, volatility and volume from odd-numbered minutes, so no trade or return feeds both | Yes | No |
+| Split sample, residual vol | As above, with the odd minutes' residual volatility: the part of returns order flow does not explain | Yes | Mostly |
+| IV | Two-stage least squares: today's log volatility and log volume instrumented with yesterday's | Yes | No: lambda is persistent, so yesterday's volatility carries yesterday's lambda, which biases the slope upward |
 
-`split_sample_resid` is the closest test of whether impact rises when the
-market is volatile for reasons other than order flow. The IV results include
-each first stage's F statistic; below about 10, the instruments are weak.
+The two sources of mechanical correlation: lambda is estimated as
+`corr(r, q) * sd(r) / sd(q)`, so a day on which flow and returns happen to
+line up raises both the lambda estimate and volatility (shared sampling
+noise); and when lambda really is high, the same flow moves prices further,
+which raises volatility (impact creating volatility).
+
+- **Most of the same-day effect is real.** Removing the shared minutes lowers
+  the volatility elasticity from 1.63 to 1.45, and also removing flow-driven
+  volatility lowers it to 1.25. The IV, a different method, gives 1.36. So
+  sampling noise and impact feeding back into volatility account for roughly a
+  quarter of the same-day estimate.
+- **It matches Kyle's model.** In Kyle (1985), lambda equals the volatility of
+  informed traders' information divided by the size of noise trading, so the
+  model predicts an elasticity of +1 on volatility and -1 on noise-trading
+  volume. The cleanest test gives +1.25 and -1.00. Residual volatility and
+  total volume are only rough proxies for those two quantities, so this is a
+  consistency check, not a test of the model.
+- **Why the lagged check missed it.** That model put yesterday's volatility
+  next to *today's* volume. Daily volatility and volume move together, so once
+  today's volume is held fixed, yesterday's volatility adds little information
+  about today's volatility, and its slope says little about the effect. The IV
+  instruments both variables with their lags and does not have this problem.
+- **High-volatility days.** A dummy for each pair's top fifth of days by
+  volatility, without a volume control, is only marginally significant
+  (pooled: +1.0 bps per $1M, p = 0.06), because volatile days are also busy
+  days and the extra depth offsets part of the extra impact.
+- **Not causal.** Information arriving probably raises volatility, volume and
+  price impact together. That is what Kyle's model describes, but these
+  regressions measure association, not the effect of one on another.
 
 ## Data notes
 
