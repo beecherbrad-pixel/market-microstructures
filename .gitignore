@@ -28,3 +28,7 @@ derby.log
 .idea/
 .DS_Store
 Thumbs.db
+
+# Exports from Databricks and SAS results (regenerated, and regression_bars.csv is ~20 MB)
+exports/
+sas_output/

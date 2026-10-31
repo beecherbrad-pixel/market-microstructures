@@ -16,6 +16,7 @@ a flag for which side initiated it.
 | Silver | Deduplicated trades, consistent timestamps, signed order flow; liquid clustering on pair and day | Done |
 | Gold | One-minute bars and daily summaries: VWAP, realized volatility, order-flow imbalance, Roll spread, Amihud illiquidity | Done |
 | Price impact | Kyle's lambda by pair and day, estimated in Spark; second-stage regressions on volatility; CSV exports for SAS | Done |
+| SAS replication | Daily lambdas and every second-stage model re-estimated in SAS; parity table against Python ([docs/sas_parity.md](docs/sas_parity.md)) | Done |
 
 ## Scale
 
@@ -57,10 +58,16 @@ src/microstructure/
     gold.py             time bars and daily liquidity measures
     impact.py           Kyle's lambda: one regression per group, run in Spark
     analysis.py         daily panel and volatility regressions (pandas, statsmodels)
+    parity.py           Python vs SAS parity report
 notebooks/
     01_bronze_silver.py Databricks notebook: volume -> bronze -> silver
     02_gold.py          Databricks notebook: silver -> gold bars and daily
     03_price_impact.py  Databricks notebook: lambda tables, regressions, CSV exports
+sas/
+    00_setup.sas        paths and data import
+    01_daily_lambda.sas PROC REG, one regression per pair-day, HC1 errors
+    02_volatility.sas   SURVEYREG, AUTOREG, IML, PANEL, SYSLIN: the second stage
+    run_all.sas         runs the three in order
 tests/                  pytest suite; runs offline on a local Spark session
 .github/workflows/      runs the tests on every push
 ```
@@ -270,6 +277,46 @@ which raises volatility (impact creating volatility).
 - **Not causal.** Information arriving probably raises volatility, volume and
   price impact together. That is what Kyle's model describes, but these
   regressions measure association, not the effect of one on another.
+
+## SAS replication
+
+Every estimate in the price-impact section is re-estimated in SAS (SAS
+OnDemand for Academics) from the CSV exports, and a parity report puts the two
+side by side.
+
+| Python | SAS |
+|---|---|
+| Daily lambda, Spark `regr_*` aggregates with White (HC1) errors | `PROC REG`, `BY symbol trade_date`, `/ hcc hccmethod=1` |
+| Pooled panel: OLS with pair dummies, errors clustered by date | `PROC SURVEYREG`, `CLASS symbol`, `CLUSTER trade_date` |
+| Per pair: Newey-West, 5 lags | `PROC AUTOREG`, `COVEST=HAC(KERNEL=BARTLETT, BANDWIDTH=6)` |
+| Two-stage least squares, first-stage F | first stages, second stage and a residual pass in SURVEYREG or AUTOREG; F statistic from `CONTRAST` (pooled) and `PROC IML` (per pair, Newey-West Wald test) |
+| (coefficient cross-checks) | `PROC PANEL` with `FIXONE`; `PROC SYSLIN` with `2SLS` |
+
+The standard errors are set up to be the same estimator, not just a similar
+one: SURVEYREG's default cluster adjustment is the one statsmodels uses, and
+SAS's Bartlett kernel weights lag *j* by 1 - *j*/*b*, so a bandwidth of 6 is
+Newey-West with 5 lags. `tests/test_parity.py` checks both, and the IV
+residual pass, against statsmodels. P-values are not compared: SAS uses t
+distributions for robust errors and statsmodels the normal.
+
+**Result:** all 219 estimates agree. The 180 daily lambdas (slope,
+intercept, classical and HC1 standard errors, R-squared) and all 39
+second-stage slopes and standard errors match to relative differences of
+1e-11 or smaller, as do the six first-stage F statistics and the PROC PANEL
+and PROC SYSLIN coefficient cross-checks. The full table is in
+[docs/sas_parity.md](docs/sas_parity.md).
+
+To run it:
+
+1. Download the exports:
+   `databricks fs cp -r dbfs:/Volumes/workspace/microstructure/exports ./exports`
+2. In SAS Studio, create `microstructure/exports` and `microstructure/sas` in
+   your home folder, upload the CSVs and the `sas/` programs, open
+   `run_all.sas` and run it.
+3. Download `sas_results.csv` and `sas_lambda_daily.csv` from
+   `microstructure/sas_output` into a local `sas_output` folder, then
+   `python -m microstructure.parity --exports exports --sas sas_output`, which
+   writes `docs/sas_parity.md`.
 
 ## Data notes
 
