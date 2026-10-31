@@ -15,6 +15,7 @@
 # MAGIC |---|---|---|
 # MAGIC | `gold_lambda_daily` | pair and day | lambda, classical and White (HC1) standard errors, R-squared |
 # MAGIC | `gold_lambda_hourly` | pair and UTC hour | lambda pooled over all days, for the intraday profile |
+# MAGIC | `gold_lambda_split` | pair and day | lambda from even minutes; volatility, residual volatility and volume from odd minutes |
 # MAGIC | `exports` volume | | CSVs for the SAS replication and the Tableau dashboard |
 # MAGIC
 # MAGIC Run `02_gold` first. The estimator is in `src/microstructure/impact.py` and the second stage in
@@ -39,6 +40,7 @@ BARS = f"{NS}.gold_bars"
 DAILY = f"{NS}.gold_daily"
 LAMBDA_DAILY = f"{NS}.gold_lambda_daily"
 LAMBDA_HOURLY = f"{NS}.gold_lambda_hourly"
+LAMBDA_SPLIT = f"{NS}.gold_lambda_split"
 RUNS = f"{NS}.pipeline_runs"
 EXPORTS = f"/Volumes/{CATALOG}/{SCHEMA}/exports"
 
@@ -54,7 +56,7 @@ if SRC not in sys.path:
     sys.path.insert(0, SRC)
 
 from microstructure.analysis import high_vol_comparison, impact_panel, volatility_regressions
-from microstructure.impact import kyle_lambda, regression_observations
+from microstructure.impact import kyle_lambda, regression_observations, split_sample
 
 # COMMAND ----------
 
@@ -126,9 +128,39 @@ display(spark.table(LAMBDA_HOURLY).select("symbol", "hour_utc", "lambda", "lambd
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Split sample
+# MAGIC
+# MAGIC Lambda from even-numbered minutes, volatility and volume from odd-numbered minutes, so the two never share a
+# MAGIC trade or a return. `resid_vol_odd` is the volatility of the odd minutes that order flow does not explain.
+
+# COMMAND ----------
+
+started = time.perf_counter()
+split_sample(bars).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(LAMBDA_SPLIT)
+split_seconds = time.perf_counter() - started
+split_rows = spark.table(LAMBDA_SPLIT).count()
+print(f"gold_lambda_split: {split_rows:,} pair-days in {split_seconds:,.1f}s")
+assert split_rows == lambda_rows, f"{split_rows} split rows but {lambda_rows} pair-days"
+
+display(
+    spark.table(LAMBDA_SPLIT)
+    .join(lam.select("symbol", "trade_date", "lambda"), ["symbol", "trade_date"])
+    .groupBy("symbol")
+    .agg(
+        F.round(F.corr("lambda", "lambda_even"), 3).alias("corr_full_vs_even_lambda"),
+        F.round(F.expr("percentile(lambda_even, 0.5)"), 4).alias("lambda_even_median"),
+        F.round(F.avg("n_obs_even"), 0).alias("bars_even"),
+        F.round(F.avg("n_obs_odd"), 0).alias("bars_odd"),
+    )
+    .orderBy("symbol")
+)
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Does price impact rise on volatile days?
 # MAGIC
-# MAGIC The daily panel is a few hundred rows, so it moves to pandas. Three models, each pooled (pair fixed effects,
+# MAGIC The daily panel is a few hundred rows, so it moves to pandas. Each model runs pooled (pair fixed effects,
 # MAGIC standard errors clustered by date) and per pair (Newey-West):
 # MAGIC
 # MAGIC * `levels`: lambda on realized volatility (%) and volume ($bn)
@@ -137,6 +169,13 @@ display(spark.table(LAMBDA_HOURLY).select("symbol", "hour_utc", "lambda", "lambd
 # MAGIC * `logs_lagged_vol`: as `logs`, with the previous day's realized volatility. Same-day lambda and volatility
 # MAGIC   are built from the same minute returns; yesterday's volatility is not, so a positive slope here means the
 # MAGIC   link is not only mechanical. Expect it to be smaller, since yesterday's volatility only partly predicts today's.
+# MAGIC * `iv_lagged`: two-stage least squares, with today's log volatility and log volume instrumented by yesterday's.
+# MAGIC   Same scale as `logs`. `first_stage_f` below about 10 means weak instruments. Lambda is persistent, so
+# MAGIC   yesterday's volatility also carries yesterday's lambda, which biases this slope upward.
+# MAGIC * `split_sample`: log lambda from even minutes on log volatility and log volume from odd minutes.
+# MAGIC * `split_sample_resid`: as `split_sample`, with the odd minutes' residual (non-flow) volatility. Because high
+# MAGIC   impact itself raises total volatility, this is the cleanest test of whether impact rises when the market is
+# MAGIC   volatile for other reasons.
 # MAGIC
 # MAGIC Volume is controlled for because volatile days are also busy days, and a deeper market pushes lambda down.
 
@@ -144,8 +183,9 @@ display(spark.table(LAMBDA_HOURLY).select("symbol", "hour_utc", "lambda", "lambd
 
 lam_pd = lam.toPandas()
 daily_pd = spark.table(DAILY).toPandas()
+split_pd = spark.table(LAMBDA_SPLIT).toPandas()
 
-panel = impact_panel(lam_pd, daily_pd, min_obs=MIN_OBS)
+panel = impact_panel(lam_pd, daily_pd, split=split_pd, min_obs=MIN_OBS)
 print(f"{len(panel)} pair-days in the panel ({len(lam_pd) - len(panel)} dropped with fewer than {MIN_OBS} bars)")
 
 results = volatility_regressions(panel)
@@ -222,6 +262,7 @@ exports = {
     "python_results.csv": results,
     "high_vol_comparison.csv": comparison,
     "lambda_hourly.csv": spark.table(LAMBDA_HOURLY).orderBy("symbol", "hour_utc").toPandas(),
+    "lambda_split.csv": split_pd.sort_values(["symbol", "trade_date"]),
     "gold_daily.csv": daily_pd.sort_values(["symbol", "trade_date"]),
 }
 for name, frame in exports.items():
@@ -243,6 +284,7 @@ spark.createDataFrame(
     [
         (now, "gold_lambda_daily", bar_rows, lambda_rows, symbols, lambda_seconds),
         (now, "gold_lambda_hourly", bar_rows, hourly_rows, symbols, hourly_seconds),
+        (now, "gold_lambda_split", bar_rows, split_rows, symbols, split_seconds),
     ],
     spark.table(RUNS).schema,
 ).write.mode("append").saveAsTable(RUNS)

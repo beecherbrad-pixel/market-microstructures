@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 import pytest
 from pyspark.sql.types import DateType, DoubleType, StringType, StructField, StructType, TimestampType
 
-from microstructure.impact import LAMBDA_COLUMNS, kyle_lambda, regression_observations
+from microstructure.impact import LAMBDA_COLUMNS, SPLIT_COLUMNS, kyle_lambda, regression_observations, split_sample
 
 BARS = StructType(
     [
@@ -63,6 +63,7 @@ def test_matches_ols_by_hand(bars):
     assert row["lambda_se_hc1"] == pytest.approx(hc1)
     assert row["lambda_t_hc1"] == pytest.approx(slope / hc1)
     assert row["flow_mean"] == pytest.approx(sum(FLOW) / 6)
+    assert row["resid_sd"] == pytest.approx(se * math.sqrt(sum((f - sum(FLOW) / 6) ** 2 for f in FLOW)))
 
 
 def test_units_are_bps_per_million(bars):
@@ -109,3 +110,32 @@ def test_too_few_observations_leave_errors_null(bars):
     assert row["lambda"] == pytest.approx(2.0)
     assert row["lambda_se"] is None
     assert row["lambda_se_hc1"] is None
+
+
+# --- split sample ------------------------------------------------------------
+
+SPLIT_BARS = StructType(BARS.fields + [StructField("quote_volume", DoubleType())])
+
+
+def test_split_sample_keeps_halves_apart(spark):
+    """Even minutes follow ret = 2 * flow exactly; odd minutes follow a different line with noise."""
+    start = datetime(2026, 8, 1)
+    even_flow = [1.0, -1.0, 2.0, 0.5, -2.0]
+    odd_flow = [1.0, 2.0, -1.0, 0.0, 3.0]
+    odd_ret = [7.0, -3.0, 4.0, 1.0, -6.0]
+    rows = []
+    for i in range(5):
+        rows.append(("BTCUSDT", DAY, start + timedelta(minutes=2 * i), 2 * even_flow[i] / 1e4, even_flow[i] * 1e6, 10.0))
+        rows.append(("BTCUSDT", DAY, start + timedelta(minutes=2 * i + 1), odd_ret[i] / 1e4, odd_flow[i] * 1e6, 100.0))
+    out = split_sample(spark.createDataFrame(rows, SPLIT_BARS))
+    row = out.first()
+
+    assert out.columns == ["symbol", "trade_date", *SPLIT_COLUMNS]
+    assert row["lambda_even"] == pytest.approx(2.0)  # odd minutes would pull it away from 2
+    assert (row["n_obs_even"], row["n_obs_odd"]) == (5, 5)
+    assert row["realized_vol_odd"] == pytest.approx(math.sqrt(sum((r / 1e4) ** 2 for r in odd_ret)))
+    assert row["quote_volume_odd"] == pytest.approx(500.0)
+
+    slope, alpha, se, _ = ols_by_hand(odd_flow, odd_ret)
+    resid = [r - alpha - slope * f for f, r in zip(odd_flow, odd_ret)]
+    assert row["resid_vol_odd"] == pytest.approx(math.sqrt(sum(e**2 for e in resid) / 3))

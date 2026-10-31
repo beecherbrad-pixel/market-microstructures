@@ -201,9 +201,10 @@ The second stage asks whether lambda rises on volatile days. On the daily
 panel, lambda is regressed on realized volatility with volume as a control
 (volatile days are also busy days, and a deeper market pushes lambda down), in
 levels, in logs (elasticities), and against a dummy for each pair's top fifth
-of days by volatility. A fourth model repeats the log model with the
-previous day's volatility, which shares no data with the day's lambda
-regression (see the caveat below). Pooled models have pair fixed effects and standard
+of days by volatility. Robustness checks repeat the log model with the
+previous day's volatility, with two-stage least squares using the previous
+day's values as instruments, and on split samples of even and odd minutes
+(see the results below). Pooled models have pair fixed effects and standard
 errors clustered by date; per-pair models use Newey-West.
 
 ### Results, 1 Aug to 29 Oct 2026 (180 pair-days)
@@ -232,12 +233,14 @@ models includes the pair effects.
 - **Same day.** At fixed volume, a day with 10% higher realized volatility has
   about 16% higher lambda; at fixed volatility, 10% more volume goes with about
   12% lower lambda. The estimates are almost identical for both pairs.
-- **Why that is largely mechanical.** An OLS slope is
+- **Why the same-day estimate is suspect.** An OLS slope is
   `lambda = corr(r, q) * sd(r) / sd(q)`. Over a day, `sd(r)` is close to realized
-  volatility, and `sd(q)`, the spread of net order flow, grows with volume. So
-  `log lambda` is close to `log realized vol - log flow spread` by
-  construction, and a regression on those two variables will find
-  coefficients near +1 and -1 whatever the economics.
+  volatility and `sd(q)`, the spread of net order flow, grows with volume, so
+  lambda, volatility and volume are built from the same numbers. Two things
+  link them that are not the effect of interest: shared sampling noise (a day
+  on which flow and returns happen to line up raises both the lambda estimate
+  and volatility), and impact creating volatility (when lambda really is high,
+  flow moves prices further, which raises volatility).
 - **The lagged check.** Yesterday's volatility shares no data with today's
   regression. Its slope is 0.12 and not significant (pooled p = 0.31;
   BTCUSDT 0.01, p = 0.94; ETHUSDT 0.19, p = 0.32), and the volume effect
@@ -251,10 +254,19 @@ models includes the pair effects.
 
 What holds up is the level of price impact: it is positive and significant on
 almost every day, stable within each pair, and about 2.5 times larger for
-ETHUSDT. Whether impact really rises in volatile periods needs a test that
-avoids the same-day overlap, such as instrumenting today's volatility with
-yesterday's, or estimating lambda and volatility on separate halves of each
-day.
+ETHUSDT.
+
+Two further checks avoid the same-day overlap; their results are pending:
+
+| Model | What it does | Removes sampling noise | Removes impact creating volatility |
+|---|---|---|---|
+| `iv_lagged` | Two-stage least squares: today's log volatility and log volume instrumented with yesterday's; same scale as the same-day model | Yes | No: lambda is persistent, so yesterday's volatility carries yesterday's lambda, which biases the slope upward |
+| `split_sample` | Lambda from even-numbered minutes, volatility and volume from odd-numbered minutes, so no trade or return feeds both | Yes | No |
+| `split_sample_resid` | As `split_sample`, with the odd minutes' residual volatility (the part order flow does not explain) | Yes | Mostly |
+
+`split_sample_resid` is the closest test of whether impact rises when the
+market is volatile for reasons other than order flow. The IV results include
+each first stage's F statistic; below about 10, the instruments are weak.
 
 ## Data notes
 
