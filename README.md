@@ -15,7 +15,7 @@ a flag for which side initiated it.
 | Bronze | Raw trades in a Delta table with an explicit schema and lineage columns, loaded incrementally with Auto Loader | Done |
 | Silver | Deduplicated trades, consistent timestamps, signed order flow; liquid clustering on pair and day | Done |
 | Gold | One-minute bars and daily summaries: VWAP, realized volatility, order-flow imbalance, Roll spread, Amihud illiquidity | Done |
-| Price impact | Kyle's lambda by pair and day, estimated in Spark; second-stage regressions on volatility; CSV exports for SAS | Built; first full run pending |
+| Price impact | Kyle's lambda by pair and day, estimated in Spark; second-stage regressions on volatility; CSV exports for SAS | Done |
 
 ## Scale
 
@@ -31,6 +31,7 @@ roughly 10% between runs.
 | Silver, full rebuild | 39 to 53 s | 145 to 158 s |
 | Gold bars | 68 s (44,640 bars) | 123 s (259,200 bars) |
 | Gold daily | 14 s (31 pair-days) | 44 s (180 pair-days) |
+| Kyle's lambda, one regression per pair-day | | 7 s (259,198 bars, 180 regressions) |
 
 - With 5.2 times the trades, the silver rebuild took about 3 times as long and
   the gold bars about 1.8 times as long, most likely because serverless compute scales out
@@ -200,8 +201,44 @@ The second stage asks whether lambda rises on volatile days. On the daily
 panel, lambda is regressed on realized volatility with volume as a control
 (volatile days are also busy days, and a deeper market pushes lambda down), in
 levels, in logs (elasticities), and against a dummy for each pair's top fifth
-of days by volatility. Pooled models have pair fixed effects and standard
+of days by volatility. A fourth model repeats the log model with the
+previous day's volatility, which shares no data with the day's lambda
+regression (see the caveat below). Pooled models have pair fixed effects and standard
 errors clustered by date; per-pair models use Newey-West.
+
+### Results, 1 Aug to 29 Oct 2026 (180 pair-days)
+
+Lambda is clearly positive every day. The median is 3.0 bps per $1M of net
+buying for BTCUSDT (interquartile range 2.3 to 3.9) and 7.7 for ETHUSDT
+(5.9 to 10.6), so the same flow moves ETH about 2.5 times as far. The slope is
+significant at 5% on 89 of 90 BTC days and all 90 ETH days, and order flow
+explains about a quarter of the variance in minute returns (mean R-squared
+0.26 and 0.22).
+
+Price impact rises with volatility and falls with volume, with almost the same
+elasticities for both pairs:
+
+| Log lambda on | Pooled | BTCUSDT | ETHUSDT |
+|---|---|---|---|
+| log realized volatility | 1.63 (0.15) | 1.59 (0.12) | 1.61 (0.30) |
+| log volume | -1.23 (0.13) | -1.16 (0.13) | -1.25 (0.23) |
+| R-squared | 0.75 | 0.61 | 0.43 |
+
+Standard errors in parentheses: clustered by date for the pooled model (with
+pair fixed effects), Newey-West with 5 lags for each pair.
+
+- At fixed volume, a day with 10% higher realized volatility has about 16%
+  higher lambda. At fixed volatility, 10% more volume goes with about 12% lower
+  lambda.
+- Volatility and volume have to be estimated together. A dummy for each pair's top
+  fifth of days by volatility, without a volume control, is only marginally
+  significant (pooled: +1.0 bps per $1M, p = 0.06), because volatile days are
+  also busy days and the extra depth offsets part of the extra impact.
+- The relationships are associations, not causal effects: news probably raises
+  volatility, volume and price impact together. Lambda and same-day realized
+  volatility are also built from the same minute returns, so part of the
+  volatility link is mechanical. The `logs_lagged_vol` model checks this with
+  the previous day's volatility instead.
 
 ## Data notes
 

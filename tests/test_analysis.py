@@ -81,3 +81,23 @@ def test_high_vol_days_have_higher_lambda(panel):
     assert (cmp["days_high_vol"] == 24).all()
     assert (cmp["lambda_ratio"] > 1).all()
     assert (cmp["realized_vol_pct_high_vol"] > cmp["realized_vol_pct_other"]).all()
+
+
+def test_lagged_volatility_is_previous_calendar_day():
+    lambdas, daily = synthetic(days=5)
+    daily = daily.drop(index=2)  # BTCUSDT loses 2026-08-03
+    panel = impact_panel(lambdas, daily).set_index(["symbol", "trade_date"])
+    btc = panel.loc["BTCUSDT"]
+    rv = daily.set_index(["symbol", "trade_date"])["realized_vol"]["BTCUSDT"]
+
+    assert np.isnan(btc.loc[date(2026, 8, 1), "realized_vol_lag"])  # first day of the sample
+    assert btc.loc[date(2026, 8, 2), "realized_vol_lag"] == rv[date(2026, 8, 1)]
+    assert np.isnan(btc.loc[date(2026, 8, 4), "realized_vol_lag"])  # previous day missing: no lag
+    assert btc.loc[date(2026, 8, 5), "realized_vol_lag"] == rv[date(2026, 8, 4)]
+
+
+def test_lagged_model_runs_on_days_with_a_lag(panel):
+    res = volatility_regressions(panel)
+    lagged = res[(res["model"] == "logs_lagged_vol") & (res["sample"] == "pooled")].set_index("term")
+    assert set(lagged.index) == {"log_realized_vol_lag", "log_volume"}
+    assert lagged.loc["log_realized_vol_lag", "n_obs"] == 238  # first day of each pair drops

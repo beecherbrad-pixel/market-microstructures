@@ -134,6 +134,9 @@ display(spark.table(LAMBDA_HOURLY).select("symbol", "hour_utc", "lambda", "lambd
 # MAGIC * `levels`: lambda on realized volatility (%) and volume ($bn)
 # MAGIC * `logs`: log lambda on log realized volatility and log volume (elasticities)
 # MAGIC * `high_vol_day`: lambda on a dummy for the pair's top fifth of days by realized volatility
+# MAGIC * `logs_lagged_vol`: as `logs`, with the previous day's realized volatility. Same-day lambda and volatility
+# MAGIC   are built from the same minute returns; yesterday's volatility is not, so a positive slope here means the
+# MAGIC   link is not only mechanical. Expect it to be smaller, since yesterday's volatility only partly predicts today's.
 # MAGIC
 # MAGIC Volume is controlled for because volatile days are also busy days, and a deeper market pushes lambda down.
 

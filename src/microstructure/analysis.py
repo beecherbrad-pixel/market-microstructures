@@ -14,6 +14,16 @@ pair) and on each pair alone:
 ``logs``          log lambda on log realized volatility and log volume, so the
                   slopes are elasticities; days with lambda <= 0 drop out
 ``high_vol_day``  lambda on a dummy for the pair's most volatile days
+``logs_lagged_vol`` as ``logs``, but with the previous day's realized
+                  volatility in place of the same day's
+
+The lagged model is a robustness check. Same-day lambda and realized
+volatility are both built from the same minute returns, so part of their
+correlation is mechanical. Yesterday's volatility shares no data with today's
+regression but still predicts today's volatility, because volatility is
+persistent. If its slope stays positive, the link is not only mechanical. The
+slope will be smaller than the same-day one, because yesterday's volatility is
+only a partial proxy for today's.
 
 Volume is a control because volatile days are also busy days, and a deeper
 market on busy days pushes lambda the other way; leaving it out would mix the
@@ -44,6 +54,7 @@ SPECS = {
     "levels": ("lambda", ["realized_vol_pct", "volume_busd"]),
     "logs": ("log_lambda", ["log_realized_vol", "log_volume"]),
     "high_vol_day": ("lambda", ["high_vol"]),
+    "logs_lagged_vol": ("log_lambda", ["log_realized_vol_lag", "log_volume"]),
 }
 
 RESULT_COLUMNS = ["model", "sample", "term", "coef", "se", "t", "p_value", "n_obs", "r2", "cov_type"]
@@ -56,7 +67,8 @@ def impact_panel(
     high_vol_quantile: float = HIGH_VOL_QUANTILE,
 ) -> pd.DataFrame:
     """Join daily lambdas to the daily measures and add the regression variables."""
-    panel = lambdas.merge(daily[KEYS + DAILY_FIELDS], on=KEYS, how="inner")
+    daily = add_lagged_volatility(daily)
+    panel = lambdas.merge(daily[KEYS + DAILY_FIELDS + ["realized_vol_lag"]], on=KEYS, how="inner")
     panel = panel[(panel["n_obs"] >= min_obs) & panel["lambda"].notna()].copy()
 
     panel["realized_vol_pct"] = panel["realized_vol"] * 100
@@ -65,10 +77,26 @@ def impact_panel(
     panel["log_lambda"] = np.log(panel["lambda"].where(positive))
     panel["log_realized_vol"] = np.log(panel["realized_vol"])
     panel["log_volume"] = np.log(panel["quote_volume"])
+    panel["log_realized_vol_lag"] = np.log(panel["realized_vol_lag"])
 
     cutoff = panel.groupby("symbol")["realized_vol"].transform(lambda s: s.quantile(high_vol_quantile))
     panel["high_vol"] = (panel["realized_vol"] >= cutoff).astype(int)
     return panel.sort_values(KEYS).reset_index(drop=True)
+
+
+def add_lagged_volatility(daily: pd.DataFrame) -> pd.DataFrame:
+    """Add ``realized_vol_lag``: the pair's realized volatility on the previous calendar day.
+
+    It is taken from the full daily table, before any days are filtered out of
+    the panel, and is missing when the previous day is not loaded, so a gap in
+    the data never pairs a day with an older one.
+    """
+    daily = daily.copy()
+    dates = pd.to_datetime(daily["trade_date"])
+    prev = daily.assign(_date=dates + pd.Timedelta(days=1))[["symbol", "_date", "realized_vol"]]
+    prev = prev.rename(columns={"realized_vol": "realized_vol_lag"})
+    out = daily.assign(_date=dates).merge(prev, on=["symbol", "_date"], how="left")
+    return out.drop(columns="_date")
 
 
 def _fit(data: pd.DataFrame, y: str, xs: list[str], pooled: bool):
