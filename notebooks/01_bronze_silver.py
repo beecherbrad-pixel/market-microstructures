@@ -143,7 +143,9 @@ print(f"silver: {bronze_rows:,} bronze rows -> {silver_rows:,} silver rows in {s
 # COMMAND ----------
 
 spark.sql(f"ALTER TABLE {SILVER} CLUSTER BY (symbol, trade_date)")
-spark.sql(f"OPTIMIZE {SILVER}")
+optimized = spark.sql(f"OPTIMIZE {SILVER}")
+# OPTIMIZE returns a large statistics table; show only how many files it rewrote.
+display(optimized.select("metrics.numFilesRemoved", "metrics.numFilesAdded"))
 
 # COMMAND ----------
 

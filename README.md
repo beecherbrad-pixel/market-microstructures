@@ -14,7 +14,7 @@ a flag for which side initiated it.
 | Ingest | Download, checksum-verify and store daily trade files | Done |
 | Bronze | Raw trades in a Delta table with an explicit schema and lineage columns, loaded incrementally with Auto Loader | Done |
 | Silver | Deduplicated trades, consistent timestamps, signed order flow; liquid clustering on pair and day | Done |
-| Gold | One-minute bars: VWAP, realized volatility, order-flow imbalance, Roll spread, Amihud illiquidity | Planned |
+| Gold | One-minute bars and daily summaries: VWAP, realized volatility, order-flow imbalance, Roll spread, Amihud illiquidity | Done |
 | Analysis | Kyle's lambda by pair and day | Planned |
 
 ## Layout
@@ -27,8 +27,10 @@ src/microstructure/
     smoke.py            sanity check on downloaded data
     bronze.py           raw rows plus source file and load time
     silver.py           validate, deduplicate, normalize time, sign trades
+    gold.py             time bars and daily liquidity measures
 notebooks/
     01_bronze_silver.py Databricks notebook: volume -> bronze -> silver
+    02_gold.py          Databricks notebook: silver -> gold bars and daily
 tests/                  pytest suite; runs offline on a local Spark session
 .github/workflows/      runs the tests on every push
 ```
@@ -93,6 +95,30 @@ Built for Databricks Free Edition (serverless compute, Unity Catalog).
 4. Run the whole notebook. Bronze is loaded with Auto Loader, so after
    uploading more files a rerun reads only the new ones; silver is rebuilt
    from bronze. Row counts and runtimes are appended to `pipeline_runs`.
+5. Run `notebooks/02_gold.py`. It rebuilds `gold_bars` and `gold_daily` from
+   silver, checks that the bars account for every trade, and logs its own
+   runtimes. The `bar_seconds` widget switches to other bar lengths (300 for
+   five-minute bars).
+
+To run both notebooks in order on a schedule or after each upload, create a
+job under **Jobs & Pipelines** with two notebook tasks, `02_gold` depending on
+`01_bronze_silver`.
+
+## Gold measures
+
+| Column | Meaning |
+|---|---|
+| `vwap` | Quote volume over base volume |
+| `ofi` | Order-flow imbalance: net signed volume over total volume, from -1 (all sells) to +1 (all buys) |
+| `roll_spread`, `roll_spread_bps` | Roll (1984) effective spread, `2 * sqrt(-cov(dp_t, dp_t-1))` from trade-to-trade price changes; null when the autocovariance is not negative |
+| `log_return` | Close-to-close log return over one bar; null when the previous bar had no trades |
+| `amihud` | Amihud (2002) illiquidity: absolute return per million USDT traded |
+| `realized_vol` | Square root of summed squared bar returns: trailing 30 minutes on bars, the whole day on the daily table; not annualized |
+
+Bars are cut on epoch time, so they do not depend on the session timezone. The
+daily Roll spread is estimated from all of a day's trades rather than averaged
+across bars, because a single minute can hold too few trades for a stable
+covariance.
 
 ## Data notes
 
