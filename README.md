@@ -17,6 +17,32 @@ a flag for which side initiated it.
 | Gold | One-minute bars and daily summaries: VWAP, realized volatility, order-flow imbalance, Roll spread, Amihud illiquidity | Done |
 | Analysis | Kyle's lambda by pair and day | Planned |
 
+## Scale
+
+Measured on Databricks Free Edition serverless compute. Times are wall-clock
+seconds from the `pipeline_runs` table, which every run appends to, and vary by
+roughly 10% between runs.
+
+| Step | August 2026, BTCUSDT | 1 Aug to 29 Oct 2026, BTCUSDT + ETHUSDT |
+|---|---|---|
+| Trades | 91.9 million | 480.4 million |
+| Bronze, loading new files | 49 s | 124 s (388.5 million new rows) |
+| Bronze, no new files | 4 s | 7 s |
+| Silver, full rebuild | 39 to 53 s | 145 to 158 s |
+| Gold bars | 68 s (44,640 bars) | 123 s (259,200 bars) |
+| Gold daily | 14 s (31 pair-days) | 44 s (180 pair-days) |
+
+- With 5.2 times the trades, the silver rebuild took about 3 times as long and
+  the gold bars about 1.8 times as long, most likely because serverless compute scales out
+  for larger jobs.
+- A full run over all 480 million trades (bronze check, silver, both gold
+  tables) takes about 5.3 minutes.
+- Auto Loader only reads files it has not seen, so a rerun with no new data
+  finishes bronze in seconds.
+- Every minute of every day had at least one trade (1,440 bars per pair per
+  day), and silver dropped no rows: the source files had no duplicates or
+  invalid trades over this period.
+
 ## Layout
 
 ```
