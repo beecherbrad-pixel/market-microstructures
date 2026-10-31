@@ -215,30 +215,46 @@ significant at 5% on 89 of 90 BTC days and all 90 ETH days, and order flow
 explains about a quarter of the variance in minute returns (mean R-squared
 0.26 and 0.22).
 
-Price impact rises with volatility and falls with volume, with almost the same
-elasticities for both pairs:
+Across days, lambda moves closely with same-day volatility and volume, but a
+check with the previous day's volatility suggests most of that is mechanical:
 
-| Log lambda on | Pooled | BTCUSDT | ETHUSDT |
-|---|---|---|---|
-| log realized volatility | 1.63 (0.15) | 1.59 (0.12) | 1.61 (0.30) |
-| log volume | -1.23 (0.13) | -1.16 (0.13) | -1.25 (0.23) |
-| R-squared | 0.75 | 0.61 | 0.43 |
+| Log lambda on | Same day, pooled | Same day, BTCUSDT | Same day, ETHUSDT | Previous day's volatility, pooled |
+|---|---|---|---|---|
+| log realized volatility | 1.63 (0.15) | 1.59 (0.12) | 1.61 (0.30) | 0.12 (0.12) |
+| log volume | -1.23 (0.13) | -1.16 (0.13) | -1.25 (0.23) | -0.13 (0.10) |
+| R-squared | 0.75 | 0.61 | 0.43 | 0.51 |
+| Pair-days | 180 | 90 | 90 | 178 |
 
-Standard errors in parentheses: clustered by date for the pooled model (with
-pair fixed effects), Newey-West with 5 lags for each pair.
+Standard errors in parentheses: clustered by date for pooled models (with pair
+fixed effects), Newey-West with 5 lags for each pair. R-squared on pooled
+models includes the pair effects.
 
-- At fixed volume, a day with 10% higher realized volatility has about 16%
-  higher lambda. At fixed volatility, 10% more volume goes with about 12% lower
-  lambda.
-- Volatility and volume have to be estimated together. A dummy for each pair's top
-  fifth of days by volatility, without a volume control, is only marginally
-  significant (pooled: +1.0 bps per $1M, p = 0.06), because volatile days are
-  also busy days and the extra depth offsets part of the extra impact.
-- The relationships are associations, not causal effects: news probably raises
-  volatility, volume and price impact together. Lambda and same-day realized
-  volatility are also built from the same minute returns, so part of the
-  volatility link is mechanical. The `logs_lagged_vol` model checks this with
-  the previous day's volatility instead.
+- **Same day.** At fixed volume, a day with 10% higher realized volatility has
+  about 16% higher lambda; at fixed volatility, 10% more volume goes with about
+  12% lower lambda. The estimates are almost identical for both pairs.
+- **Why that is largely mechanical.** An OLS slope is
+  `lambda = corr(r, q) * sd(r) / sd(q)`. Over a day, `sd(r)` is close to realized
+  volatility, and `sd(q)`, the spread of net order flow, grows with volume. So
+  `log lambda` is close to `log realized vol - log flow spread` by
+  construction, and a regression on those two variables will find
+  coefficients near +1 and -1 whatever the economics.
+- **The lagged check.** Yesterday's volatility shares no data with today's
+  regression. Its slope is 0.12 and not significant (pooled p = 0.31;
+  BTCUSDT 0.01, p = 0.94; ETHUSDT 0.19, p = 0.32), and the volume effect
+  mostly disappears as well (except for ETHUSDT: -0.30, p = 0.006). This is a
+  weaker test than the same-day model, since yesterday's volatility only partly
+  predicts today's, but the 95% interval for the pooled slope (-0.11 to 0.36)
+  is far below 1.63.
+- **High-volatility days.** A dummy for each pair's top fifth of days by
+  volatility is only marginally significant (pooled: +1.0 bps per $1M,
+  p = 0.06), which fits the same picture.
+
+What holds up is the level of price impact: it is positive and significant on
+almost every day, stable within each pair, and about 2.5 times larger for
+ETHUSDT. Whether impact really rises in volatile periods needs a test that
+avoids the same-day overlap, such as instrumenting today's volatility with
+yesterday's, or estimating lambda and volatility on separate halves of each
+day.
 
 ## Data notes
 
