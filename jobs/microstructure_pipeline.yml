@@ -1,0 +1,35 @@
+resources:
+  jobs:
+    microstructure_pipeline:
+      name: microstructure-pipeline
+      email_notifications:
+        on_failure:
+          - beecher.brad@gmail.com
+      trigger:
+        pause_status: UNPAUSED
+        file_arrival:
+          url: /Volumes/workspace/microstructure/raw/trades/
+      tasks:
+        - task_key: Bronze_and_Silver
+          notebook_task:
+            notebook_path: /Workspace/Users/beecher.brad@gmail.com/market-microstructures/notebooks/01_bronze_silver
+            source: WORKSPACE
+          environment_key: Default
+        - task_key: Gold
+          depends_on:
+            - task_key: Bronze_and_Silver
+          notebook_task:
+            notebook_path: /Workspace/Users/beecher.brad@gmail.com/market-microstructures/notebooks/02_gold
+            source: WORKSPACE
+      queue:
+        enabled: true
+      parameters:
+        - name: catalog
+          default: workspace
+        - name: schema
+          default: microstructure
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "6"
+      performance_target: PERFORMANCE_OPTIMIZED
