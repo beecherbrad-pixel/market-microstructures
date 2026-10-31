@@ -15,7 +15,7 @@ a flag for which side initiated it.
 | Bronze | Raw trades in a Delta table with an explicit schema and lineage columns, loaded incrementally with Auto Loader | Done |
 | Silver | Deduplicated trades, consistent timestamps, signed order flow; liquid clustering on pair and day | Done |
 | Gold | One-minute bars and daily summaries: VWAP, realized volatility, order-flow imbalance, Roll spread, Amihud illiquidity | Done |
-| Analysis | Kyle's lambda by pair and day | Planned |
+| Price impact | Kyle's lambda by pair and day, estimated in Spark; second-stage regressions on volatility; CSV exports for SAS | Built; first full run pending |
 
 ## Scale
 
@@ -54,9 +54,12 @@ src/microstructure/
     bronze.py           raw rows plus source file and load time
     silver.py           validate, deduplicate, normalize time, sign trades
     gold.py             time bars and daily liquidity measures
+    impact.py           Kyle's lambda: one regression per group, run in Spark
+    analysis.py         daily panel and volatility regressions (pandas, statsmodels)
 notebooks/
     01_bronze_silver.py Databricks notebook: volume -> bronze -> silver
     02_gold.py          Databricks notebook: silver -> gold bars and daily
+    03_price_impact.py  Databricks notebook: lambda tables, regressions, CSV exports
 tests/                  pytest suite; runs offline on a local Spark session
 .github/workflows/      runs the tests on every push
 ```
@@ -125,12 +128,15 @@ Built for Databricks Free Edition (serverless compute, Unity Catalog).
    silver, checks that the bars account for every trade, and logs its own
    runtimes. The `bar_seconds` widget switches to other bar lengths (300 for
    five-minute bars).
+6. Run `notebooks/03_price_impact.py`. It builds `gold_lambda_daily` and
+   `gold_lambda_hourly`, runs the volatility regressions, and writes CSVs and a
+   chart to the `exports` volume.
 
 ## Deploying the job
 
 The pipeline job is defined as code in a Databricks Asset Bundle
 (`databricks.yml` and `jobs/microstructure_pipeline.yml`). It runs
-`01_bronze_silver` and then `02_gold` on serverless compute whenever new files
+`01_bronze_silver`, `02_gold` and `03_price_impact` in order on serverless compute whenever new files
 arrive in the raw volume, and emails the deploying user if a task fails.
 
 With the [Databricks CLI](https://docs.databricks.com/aws/en/dev-tools/cli/install)
@@ -163,6 +169,39 @@ Bars are cut on epoch time, so they do not depend on the session timezone. The
 daily Roll spread is estimated from all of a day's trades rather than averaged
 across bars, because a single minute can hold too few trades for a stable
 covariance.
+
+## Price impact
+
+Kyle's (1985) lambda is the slope of a regression of returns on net order flow:
+how far the price moves per unit of net buying. One regression per pair per day
+on one-minute bars:
+
+```
+ret_bps_t = alpha + lambda * flow_musd_t + e_t
+```
+
+`ret_bps` is the bar's log return in basis points and `flow_musd` its net signed
+quote volume in millions of USDT, so lambda is **basis points per $1 million of
+net buying**.
+
+| Column | Meaning |
+|---|---|
+| `lambda`, `alpha` | OLS slope and intercept |
+| `lambda_se` | classical standard error |
+| `lambda_se_hc1`, `lambda_t_hc1` | White (HC1) robust standard error and t-statistic; the same as SAS `PROC REG ... / hcc hccmethod=1` |
+| `r2`, `n_obs` | fit and number of bars used (bars without a return drop out) |
+
+The regressions run in Spark: coefficients come from the `regr_*` aggregates in
+one pass, and the robust standard error from a second pass over the residuals.
+`kyle_lambda(bars, by=[...])` takes any grouping, so the notebook also
+estimates one lambda per pair for the whole sample and one per UTC hour of day.
+
+The second stage asks whether lambda rises on volatile days. On the daily
+panel, lambda is regressed on realized volatility with volume as a control
+(volatile days are also busy days, and a deeper market pushes lambda down), in
+levels, in logs (elasticities), and against a dummy for each pair's top fifth
+of days by volatility. Pooled models have pair fixed effects and standard
+errors clustered by date; per-pair models use Newey-West.
 
 ## Data notes
 

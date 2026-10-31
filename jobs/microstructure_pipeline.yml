@@ -1,4 +1,4 @@
-# Bronze and silver, then gold, run whenever new trade files land in the raw volume.
+# Bronze and silver, then gold, then price impact, run whenever new trade files land in the raw volume.
 # Notebook paths are relative to this file; the bundle uploads the notebooks
 # together with src/, which the notebooks import from.
 resources:
@@ -38,3 +38,9 @@ resources:
             - task_key: Bronze_and_Silver
           notebook_task:
             notebook_path: ../notebooks/02_gold.py
+
+        - task_key: Price_Impact
+          depends_on:
+            - task_key: Gold
+          notebook_task:
+            notebook_path: ../notebooks/03_price_impact.py
