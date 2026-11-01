@@ -3,6 +3,8 @@
 A PySpark pipeline that turns tick-level cryptocurrency trades into minute-level
 liquidity and price-impact measures.
 
+**[Interactive dashboard on Tableau Public](https://public.tableau.com/views/Cryptomarketmicrostructurepriceimpactandliquidity_17934921036170/High-volatilitydays?:language=en-US&:display_count=n&:origin=viz_share_link)**
+
 Source data is Binance's public spot trade history
 ([data.binance.vision](https://data.binance.vision)): every executed trade, with
 a flag for which side initiated it.
@@ -17,6 +19,7 @@ a flag for which side initiated it.
 | Gold | One-minute bars and daily summaries: VWAP, realized volatility, order-flow imbalance, Roll spread, Amihud illiquidity | Done |
 | Price impact | Kyle's lambda by pair and day, estimated in Spark; second-stage regressions on volatility; CSV exports for SAS | Done |
 | SAS replication | Daily lambdas and every second-stage model re-estimated in SAS; parity table against Python ([docs/sas_parity.md](docs/sas_parity.md)) | Done |
+| Dashboard | Tableau Public: price impact over time, a drill-down into high-volatility days, BTC vs ETH ([live dashboard](https://public.tableau.com/views/Cryptomarketmicrostructurepriceimpactandliquidity_17934921036170/High-volatilitydays?:language=en-US&:display_count=n&:origin=viz_share_link), [build guide](docs/tableau_dashboard.md)) | Done |
 
 ## Scale
 
@@ -59,6 +62,7 @@ src/microstructure/
     impact.py           Kyle's lambda: one regression per group, run in Spark
     analysis.py         daily panel and volatility regressions (pandas, statsmodels)
     parity.py           Python vs SAS parity report
+    dashboard.py        Tableau-ready tables from the exports
 notebooks/
     01_bronze_silver.py Databricks notebook: volume -> bronze -> silver
     02_gold.py          Databricks notebook: silver -> gold bars and daily
@@ -317,6 +321,28 @@ To run it:
    `microstructure/sas_output` into a local `sas_output` folder, then
    `python -m microstructure.parity --exports exports --sas sas_output`, which
    writes `docs/sas_parity.md`.
+
+## Dashboard
+
+Published on Tableau Public:
+[Crypto market microstructure: price impact and liquidity](https://public.tableau.com/views/Cryptomarketmicrostructurepriceimpactandliquidity_17934921036170/High-volatilitydays?:language=en-US&:display_count=n&:origin=viz_share_link).
+Three dashboards, as tabs: price impact over time, high-volatility days (click
+a day to drill into its minute bars), and BTC vs ETH.
+
+The dashboard reads three flat files built from the exports:
+
+```powershell
+python -m microstructure.dashboard --exports exports --out exports/tableau
+```
+
+`dash_daily.csv` (one row per pair-day), `dash_bars.csv` (one row per minute
+bar, for the drill-down) and `dash_hourly.csv` (lambda by hour of day). Columns
+carry readable names with units. The daily file also has log lambda and log
+volatility with each pair's dependence on volume partialled out, so a linear
+trend line on their scatter has the same slope as the per-pair log regression
+(Frisch-Waugh-Lovell): about 1.6. A raw scatter of lambda on volatility would
+show almost no relationship for ETH, because volatile days are also busy days.
+How to build it: [docs/tableau_dashboard.md](docs/tableau_dashboard.md).
 
 ## Data notes
 

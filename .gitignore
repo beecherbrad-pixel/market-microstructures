@@ -32,3 +32,7 @@ Thumbs.db
 # Exports from Databricks and SAS results (regenerated, and regression_bars.csv is ~20 MB)
 exports/
 sas_output/
+
+# Local renders of the Markdown docs (Quarto)
+docs/*.html
+docs/*_files/
