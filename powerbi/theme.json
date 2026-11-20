@@ -1,0 +1,10 @@
+{
+  "name": "Microstructure",
+  "dataColors": ["#2F6DB5", "#E07B39", "#6B8E23", "#8E6BB5", "#B5462F", "#3A9CA0", "#A0A0A0", "#C9A227"],
+  "background": "#FFFFFF",
+  "foreground": "#252423",
+  "tableAccent": "#2F6DB5",
+  "good": "#6B8E23",
+  "neutral": "#A0A0A0",
+  "bad": "#B5462F"
+}

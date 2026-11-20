@@ -20,6 +20,7 @@ a flag for which side initiated it.
 | Price impact | Kyle's lambda by pair and day, estimated in Spark; second-stage regressions on volatility; CSV exports for SAS | Done |
 | SAS replication | Daily lambdas and every second-stage model re-estimated in SAS; parity table against Python ([docs/sas_parity.md](docs/sas_parity.md)) | Done |
 | Dashboard | Tableau Public: price impact over time, a drill-down into high-volatility days, BTC vs ETH ([live dashboard](https://public.tableau.com/views/Cryptomarketmicrostructurepriceimpactandliquidity_17934921036170/High-volatilitydays?:language=en-US&:display_count=n&:origin=viz_share_link), [build guide](docs/tableau_dashboard.md)) | Done |
+| Dashboard (Power BI) | Same three dashboards as a Power BI report: Power Query (M) load, star-schema model, DAX measures including in-report OLS regression checks ([PDF](docs/powerbi_dashboard.pdf), [.pbix](powerbi/market_microstructure.pbix), [build guide](docs/powerbi_dashboard.md)) | Done |
 
 ## Scale
 
@@ -343,6 +344,21 @@ trend line on their scatter has the same slope as the per-pair log regression
 (Frisch-Waugh-Lovell): about 1.6. A raw scatter of lambda on volatility would
 show almost no relationship for ETH, because volatile days are also busy days.
 How to build it: [docs/tableau_dashboard.md](docs/tableau_dashboard.md).
+### Power BI version
+
+The same three dashboards rebuilt in Power BI Desktop from the same three files:
+[PDF export](docs/powerbi_dashboard.pdf), and the working report as
+[`powerbi/market_microstructure.pbix`](powerbi/market_microstructure.pbix)
+(open in Power BI Desktop to use the measure picker and the click-a-day
+drill-down). The data model is a small star schema (`Pair` and `Dates`
+dimensions, `Daily` filtering `Bars` on a pair-day key), and the regression
+checks run inside the report as DAX: the scatter's OLS slopes (1.594 BTC, 1.613
+ETH) and each day's lambda re-estimated from its minute bars match the PySpark
+results. Build guide: [docs/powerbi_dashboard.md](docs/powerbi_dashboard.md).
+
+![Power BI: price impact over time](docs/img/powerbi_page-1.png)
+![Power BI: high-volatility days](docs/img/powerbi_page-2.png)
+![Power BI: BTC vs ETH](docs/img/powerbi_page-3.png)
 
 ## Data notes
 
